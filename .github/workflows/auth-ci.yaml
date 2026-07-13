@@ -1,0 +1,201 @@
+name: auth service ci
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*.*.*"] # Bắt event khi push tag cho Staging
+    paths:
+      - "auth/**"
+      - ".github/workflows/actions/action.yaml"
+      - ".github/workflows/auth-ci.yaml"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "auth/**"
+      - ".github/workflows/actions/action.yaml"
+      - ".github/workflows/auth-ci.yaml"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+  workflow_dispatch:
+
+jobs:
+  Build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/workflows/actions
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run Gradle Build (Skip Tests)
+        run: ./gradlew :auth:build -x test
+        
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-assets-auth
+          path: |
+            **/build/libs/*.jar
+            **/build/classes/
+          retention-days: 1
+
+  Test:
+    needs: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/workflows/actions
+      
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run Unit Tests & Generate JaCoCo Report
+        run: ./gradlew :auth:test :auth:jacocoTestReport
+
+      - name: Upload Jacoco Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report-auth
+          path: auth/build/reports/jacoco/test/jacocoTestReport.xml
+          retention-days: 1
+
+  SonarCloud:
+    needs: [Build, Test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-assets-auth
+          
+      - name: Download Jacoco Report
+        uses: actions/download-artifact@v4
+        with:
+          name: jacoco-report-auth
+          path: auth/build/reports/jacoco/test/
+          
+      - name: Analyze with SonarCloud (CLI Mode)
+        uses: sonarsource/sonarcloud-github-action@v3.1.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          projectBaseDir: auth
+          args: >
+            -Dsonar.projectKey=yas-auth
+            -Dsonar.projectName="Yas Auth Service"
+            -Dsonar.sources=src/main/java
+            -Dsonar.tests=src/test/java
+            -Dsonar.java.binaries=build/classes/java/main
+            -Dsonar.coverage.jacoco.xmlReportPaths=build/reports/jacoco/test/jacocoTestReport.xml
+
+  Check-Coverage:
+    needs: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Download Jacoco Report
+        uses: actions/download-artifact@v4
+        with:
+          name: jacoco-report-auth
+          path: build/jacoco-results
+      - name: Add coverage report to PR
+        id: jacoco_report
+        uses: madrapps/jacoco-report@v1.6.1
+        with:
+          paths: ${{github.workspace}}/build/jacoco-results/jacocoTestReport.xml
+          token: ${{secrets.GITHUB_TOKEN}}
+          min-coverage-overall: 70
+          min-coverage-changed-files: 60
+          title: 'Auth Coverage Report'
+          update-comment: false
+      - name: Enforce Threshold
+        run: |
+          THRESHOLD=70
+          COVERAGE=${{ steps.jacoco_report.outputs.coverage-overall }}
+          if (( $(echo "$COVERAGE <= $THRESHOLD" | bc -l) )); then
+            echo "Độ bao phủ code ($COVERAGE%) thấp hơn yêu cầu ($THRESHOLD%)!"
+            exit 1
+          fi
+
+  Docker-Build-Push:
+    needs: [Check-Coverage, SonarCloud]
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    outputs:
+      image_tag: ${{ steps.prep.outputs.TAG }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-assets-auth
+          
+      - name: Determine Tag
+        id: prep
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            TAG=${GITHUB_REF#refs/tags/}
+          else
+            TAG=$(echo $GITHUB_SHA | cut -c1-7)
+          fi
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+          
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v6
+        with:
+          context: ./auth
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/yas-auth:${{ steps.prep.outputs.TAG }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/yas-auth:latest
+            
+  GitOps-Update-Manifest:
+    needs: Docker-Build-Push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Manifest Repository
+        uses: actions/checkout@v4
+        with:
+          repository: 'Thang2005HCMUS/yas.git' 
+          token: ${{ secrets.GITHUB_TOKEN }} 
+          ref: Yas-CD
+      - name: Update Image Tag in Manifest
+        env:
+          NEW_TAG: ${{ needs.Docker-Build-Push.outputs.image_tag }}
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            ENV_FOLDER="staging"
+          elif [[ $GITHUB_REF == refs/heads/Yas-CD ]]; then
+            ENV_FOLDER="dev"
+          else
+            echo "Feature branch, skipping GitOps update."
+            exit 0
+          fi
+
+          FILE_PATH="$ENV_FOLDER/auth/values.yaml"
+          sed -i "s/tag: .*/tag: $NEW_TAG/g" $FILE_PATH
+          
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          
+          git add $FILE_PATH
+          git commit -m "Update auth image tag to $NEW_TAG for $ENV_FOLDER"
+          git push origin Yas-CD
