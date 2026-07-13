@@ -32,9 +32,12 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          build-root-directory: auth
 
       - name: Run Gradle Build (Skip Tests)
-        run: ./gradlew :auth:build -x test
+        working-directory: auth
+        run: ./gradlew build -x test
         
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
@@ -54,9 +57,12 @@ jobs:
       
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          build-root-directory: auth
 
       - name: Run Unit Tests & Generate JaCoCo Report
-        run: ./gradlew :auth:test :auth:jacocoTestReport
+        working-directory: auth
+        run: ./gradlew test jacocoTestReport
 
       - name: Upload Jacoco Report
         if: always()

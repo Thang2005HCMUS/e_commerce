@@ -41,9 +41,12 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          build-root-directory: {service}
 
       - name: Run Gradle Build (Skip Tests)
-        run: ./gradlew :{service}:build -x test
+        working-directory: {service}
+        run: ./gradlew build -x test
         
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
@@ -63,9 +66,12 @@ jobs:
       
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          build-root-directory: {service}
 
       - name: Run Unit Tests & Generate JaCoCo Report
-        run: ./gradlew :{service}:test :{service}:jacocoTestReport
+        working-directory: {service}
+        run: ./gradlew test jacocoTestReport
 
       - name: Upload Jacoco Report
         if: always()
