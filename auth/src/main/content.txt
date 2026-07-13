@@ -12,7 +12,7 @@ public class AuthApplication {
 	}
 
 }
-
+...
 
 ======./java/com/example/auth/repository/RoleRepository.java======
 package com.example.auth.repository;
