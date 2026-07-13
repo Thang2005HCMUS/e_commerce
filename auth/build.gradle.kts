@@ -54,3 +54,6 @@ tasks.jacocoTestReport {
 		html.required.set(true)
 	}
 }
+tasks.getByName<Jar>("jar") {
+    enabled = false
+}
