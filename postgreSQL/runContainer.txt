@@ -1,0 +1,7 @@
+docker run --name postgres \
+  -e POSTGRES_USER=dev \
+  -e POSTGRES_PASSWORD=123456 \
+  -e POSTGRES_DB=dev \
+  -p 5432:5432 \
+  -v pg_data_volume:/var/lib/postgresql/data \
+  -d postgres:16-alpine

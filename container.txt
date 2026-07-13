@@ -1,0 +1,10 @@
+docker run -d \
+  -v /home/thangdoan/Desktop/Project/Java:/Workspace/Project \
+  --name JavaDev \
+  --network host \
+  --entrypoint /bin/bash \
+  eclipse-temurin:17.0.19_10-jdk-noble\
+  -c "sleep infinity"
+
+
+cd  Workspace/Project/SpringBoot/E-commerce
