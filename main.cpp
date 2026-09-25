@@ -10,6 +10,6 @@ int main() {
     int c = 0;
     memcpy(&b, a, 4);
     cout << b << endl; // In ra chính xác: 12345678
-    
+    //
     return 0;
 }
