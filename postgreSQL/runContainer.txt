@@ -5,3 +5,12 @@ docker run --name postgres \
   -p 5432:5432 \
   -v pg_data_volume:/var/lib/postgresql/data \
   -d postgres:16-alpine
+
+
+docker run -d \
+  --name pgadmin \
+  --network=host \
+  -e PGADMIN_LISTEN_PORT=5050 \
+  -e PGADMIN_DEFAULT_EMAIL=admin@example.com \
+  -e PGADMIN_DEFAULT_PASSWORD=secret \
+  dpage/pgadmin4

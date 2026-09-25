@@ -1,0 +1,7 @@
+Product(Id:UUIDv7,provider:UUIDv7,number:INT) PK(Id)  FK(provider -> Provider(Id ))
+Provider(Id:UUIDv7,name:varchar(192),phone: varchar(20)) PK(Id)
+Categories(Id:UUIDv7,name:varchar(32)) PK(Id)
+Product_Categories(product:UUIDv7,category:UUIDv7) PK(product,category) FK(product -> Product(Id), category -> Categories(id))
+
+
+---SQL---
